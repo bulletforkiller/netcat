@@ -20,7 +20,8 @@ class Netcat:
         self.options = {}
         self.options["max_len"] = 4096
         self.verbose = verbose
-        all_sockets = []
+        # store the connection
+        self.connections = {"srv": None, "client": None}
 
     def run(self):
         # Get the arguments needed
@@ -36,9 +37,16 @@ class Netcat:
 
     def exit(self):
         """ Do many stuff to exit the program """
-        exit(0)
+        if self.connections["client"]:
+            self.connections["client"].shutdown(socket.SHUT_RDWR)
+            self.connections["client"].close()
+        if self.connections["srv"]:
+            self.connections["srv"].shutdown(socket.SHUT_RDWR)
+            self.connections["srv"].close()
+        sys.exit(0)
 
     def arg_parse(self):
+        """ Get all arguments from command line """
         parser = argparse.ArgumentParser(
             description="A simple netcat write in python")
         parser.add_argument(
@@ -82,13 +90,19 @@ class Netcat:
             server.bind((self.options["target"], self.options["port"]))
             server.listen(1)
             client_sock, addr = server.accept()
+            # Add client to the pool
+            self.connections["client"] = client_sock
             threading.Thread(
                 target=self.general_receiver, args=(client_sock, )).start()
             threading.Thread(
                 target=self.general_sender, args=(client_sock, )).start()
-        except socket.gaierror as e:
+        except socket.gaierror:
             print("Can't bind to the address", file=sys.stderr)
             server.close()
+        except OSError:
+            print("Address alreary in use\n", file=sys.stderr)
+        else:
+            self.connections["srv"] = server
 
     def client_loop(self):
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -101,11 +115,11 @@ class Netcat:
         except ConnectionRefusedError:
             print("Connection was refused!", file=sys.stderr)
             sys.exit(-1)
+        else:
+            self.connections["client"] = client
 
     def general_sender(self, sock):
-        if self.options["command"]:
-            return
-        else:
+        if not self.options["command"]:
             while True:
                 content = input().encode()
                 sock.send(content)
@@ -113,17 +127,22 @@ class Netcat:
     def general_receiver(self, sock):
         while True:
             response = sock.recv(self.options["max_len"]).decode()
+            # Connection interruption
+            if not response:
+                self.exit()
             if self.options["command"]:
                 sock.send(self.run_command(response))
             else:
                 print(response)
 
     def run_command(self, command):
+        """ Execute shell command on this machine """
         try:
+            # check_output will return a byte seq when it's successful
             output = subprocess.check_output(
                 command, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError:
-            output = "Failed to execute command.\n"
+            output = "Failed to execute command.\n".encode()
         return output
 
 
