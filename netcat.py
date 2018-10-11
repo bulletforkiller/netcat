@@ -3,7 +3,7 @@
 """
 Simple network tool just like netcat
 Author: LY    Written in Python
-Version: v0.2
+Version: v0.3
 2018-10-10 23:09
 """
 
@@ -35,8 +35,9 @@ class Netcat:
         else:
             self.client_loop()
 
-    def exit(self):
+    def exit(self, signum, field):
         """ Do many stuff to exit the program """
+        # A big fucking bug, there must have three argument!!!
         if self.connections["client"]:
             self.connections["client"].shutdown(socket.SHUT_RDWR)
             self.connections["client"].close()
@@ -96,11 +97,11 @@ class Netcat:
                 target=self.general_receiver, args=(client_sock, )).start()
             threading.Thread(
                 target=self.general_sender, args=(client_sock, )).start()
-        except socket.gaierror:
-            print("Can't bind to the address", file=sys.stderr)
+        except socket.gaierror as e:
+            print("Can't bind to the address", str(e), file=sys.stderr)
             server.close()
-        except OSError:
-            print("Address alreary in use\n", file=sys.stderr)
+        except OSError as e:
+            print("Address alreary in use\n", str(e), file=sys.stderr)
         else:
             self.connections["srv"] = server
 
@@ -129,7 +130,7 @@ class Netcat:
             response = sock.recv(self.options["max_len"]).decode()
             # Connection interruption
             if not response:
-                self.exit()
+                sys.exit(1)
             if self.options["command"]:
                 sock.send(self.run_command(response))
             else:
